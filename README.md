@@ -51,6 +51,29 @@ Optimizer: Adam | Loss: MSE | Early stopping: patience=10, best weights restored
 
 ---
 
+## API Endpoint
+
+Built a REST API using FastAPI to serve the model predictions.
+
+```bash
+uvicorn predict_api:app --reload
+```
+
+**POST /predict** — returns next day predicted closing price
+
+```json
+{
+  "ticker": "TMPV.NS",
+  "current_price": 353.20,
+  "predicted_price": 348.52,
+  "currency": "INR"
+}
+```
+
+Interactive docs available at `http://127.0.0.1:8000/docs`
+
+---
+
 ## How to run
 
 ```bash
