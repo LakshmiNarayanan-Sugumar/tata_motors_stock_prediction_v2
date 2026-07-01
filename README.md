@@ -35,7 +35,6 @@ V2 also corrects two methodological issues from an earlier iteration:
 - MinMaxScaler fit only on training data, applied separately to test set
 - Test set scaled values range 0.213–0.771 (outside 0–1, confirming scaler was fit on train only)
 
-
 ---
 
 ## Model Architecture
@@ -67,8 +66,8 @@ Evaluated on a strictly held-out test set (last 20% of trading days, ~358 days).
 
 ## Visualizations
 
+![Closing Price](closing_price_plot.png)
 ![Predicted vs Actual](predicted_vs_actual.png)
-![Training Loss](training_loss.png)
 
 ---
 
@@ -85,8 +84,8 @@ uvicorn predict_api:app --reload
 ```json
 {
   "ticker": "TMPV.NS",
-  "current_price": 353.20,
-  "predicted_price": 348.52,
+  "current_price": 352.20,
+  "predicted_price": 340.60,
   "currency": "INR"
 }
 ```
