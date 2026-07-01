@@ -1,91 +1,72 @@
 import numpy as np
+import math
+import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Bidirectional, Dropout, Dense
 from tensorflow.keras.callbacks import EarlyStopping
-import joblib
-import math
 import os
 
-# loading the saved data from preprocessing step
+# loading saved data
+X_train = np.load("data/X_train.npy")
+X_test  = np.load("data/X_test.npy")
+y_train = np.load("data/y_train.npy")
+y_test  = np.load("data/y_test.npy")
+scaler_y = joblib.load("data/scaler_y.pkl")
 
-X_train=np.load("data/X_train.npy")
-X_test=np.load("data/X_test.npy")
-y_train=np.load("data/y_train.npy")
-y_test=np.load("data/y_test.npy")
-scaler=joblib.load("data/scaler.pkl")
 
-# building the bilstm model
-
-model= Sequential([
-    Bidirectional(LSTM(64, return_sequences=True), input_shape=(X_train.shape[1], X_test.shape[2])),
+# build BiLSTM model
+# FIX: both dimensions of input_shape use X_train, not X_test
+model = Sequential([
+    Bidirectional(LSTM(64, return_sequences=True),
+        input_shape=(X_train.shape[1], X_train.shape[2])),  # was X_test.shape[2]
     Dropout(0.2),
     Bidirectional(LSTM(32, return_sequences=False)),
     Dropout(0.2),
     Dense(1)
 ])
 
-# compiling
-
 model.compile(optimizer="adam", loss="mean_squared_error")
 model.summary()
 
-# training with early stopping
+# early stopping on validation loss
+early_stop = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True)
 
-early_stop=EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True)
-
-history=model.fit(
-    X_train,y_train,
+history = model.fit(
+    X_train, y_train,
     epochs=100,
     batch_size=64,
-    validation_split=0.1,
+    validation_split=0.1,   # takes last 10% of X_train as val — fine since split is time-based
     callbacks=[early_stop],
     verbose=1
 )
+scaler_y = joblib.load("data/scaler_y.pkl")
 
-#plotting training loss
+# inverse transform using scaler_y
+predictions   = scaler_y.inverse_transform(model.predict(X_test))
+y_test_actual = scaler_y.inverse_transform(y_test.reshape(-1, 1))
 
-plt.figure(figsize=(10,4))
-plt.plot(history.history["loss"], label="train loss")
-plt.plot(history.history["val_loss"], label="val_loss")
-plt.title("model loss during training")
-plt.xlabel("epoch")
-plt.ylabel("loss (MSE)")
-plt.legend()
-plt.tight_layout()
-plt.savefig("training_loss.png")
-plt.show() 
+# compute MAE and RMSE in actual rupee values
+mae  = mean_absolute_error(y_test_actual, predictions)
+rmse = math.sqrt(mean_squared_error(y_test_actual, predictions))
 
-# prdiction and inverse scale
+print(f"\nMAE:  ₹{mae:.2f}")
+print(f"RMSE: ₹{rmse:.2f}")
 
-predictions=model.predict(X_test)
-predictions=scaler.inverse_transform(predictions)
-Y_test_actual=scaler.inverse_transform(y_test.reshape(-1,1))
-
-# evaluavtion using mae and rmse
-
-mae=mean_absolute_error(Y_test_actual, predictions)
-rmse=math.sqrt(mean_squared_error(Y_test_actual, predictions))
-
-print(f"\n MAE:  {mae:.2f}")
-print(f"\n RMSE: {rmse:.2f}")
-
-# plot for predicted vs actual
-
-plt.figure(figsize=(14,5))
-plt.plot(Y_test_actual, color="steelblue", label="actual price")
-plt.plot(predictions, color="red", label="predicted price")
-plt.title("TATA MOTORS - predicted vs actual closing price")
-plt.xlabel("days")
-plt.ylabel("price")
+# plot predicted vs actual
+plt.figure(figsize=(14, 5))
+plt.plot(y_test_actual, color="steelblue", label="Actual Price")
+plt.plot(predictions,   color="red",       label="Predicted Price")
+plt.title("TMPV.NS — Predicted vs Actual Closing Price")
+plt.xlabel("Days")
+plt.ylabel("Price (₹)")
 plt.legend()
 plt.tight_layout()
 plt.savefig("predicted_vs_actual.png")
 plt.show()
 
-# saving the model
-
+# save model
 os.makedirs("model", exist_ok=True)
 model.save("model/tata_motors_bilstm.keras")
-print("\ncompleted")
+print("model saved")

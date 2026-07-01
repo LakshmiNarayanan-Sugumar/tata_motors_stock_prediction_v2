@@ -3,74 +3,97 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 import yfinance as yf
+import joblib
 import os
 
-#fetching data from yfinance
+# fetching TMPV.NS data
+print("fetching TMPV.NS data...")
+df = yf.download("TMPV.NS", start="2019-01-01", end="2026-06-25")
 
-print("fetching tmpv.ns data")
-df=yf.download("TMPV.NS", start="2019-01-01", end="2026-06-25")
+# verify actual date range — important for demerged stock
+print("actual date range:", df.index.min(), "to", df.index.max())
+print("total trading days:", len(df))
 print("shape:", df.shape)
 
-#exploratory data analysis
-
+# missing values check
 print("\nmissing values:")
 print(df.isnull().sum())
 
+# plot closing price
 plt.figure(figsize=(14, 5))
 plt.plot(df["Close"], color="steelblue", linewidth=1.3)
-plt.title("tmpv.ns - closing price(2019-2026)")
+plt.title("TMPV.NS - Closing Price")
 plt.xlabel("Date")
-plt.ylabel("Price")
+plt.ylabel("Price (₹)")
 plt.tight_layout()
 plt.savefig("closing_price_plot.png")
+plt.show()
 
+# extract close prices as numpy array
+close_prices = df[["Close"]].values
+print("close prices shape:", close_prices.shape)
 
+# sliding window — build sequences on RAW unscaled prices
+# scaling happens after split to prevent leakage
+lookback = 60
 
-#selecting close and normalization
+X_raw, y_raw = [], []
+for i in range(lookback, len(close_prices)):
+    X_raw.append(close_prices[i-lookback:i, 0])
+    y_raw.append(close_prices[i, 0])
 
-close_prices=df[["Close"]].values
-scaler=MinMaxScaler(feature_range=(0,1))
-scaled_data=scaler.fit_transform(close_prices)
-print("scaled data shape:", scaled_data.shape)
-print(f"min: {scaled_data.min():.3f}, max: {scaled_data.max():.3f}")
+X_raw = np.array(X_raw)
+y_raw = np.array(y_raw)
 
-#sliding window
+print("X_raw shape:", X_raw.shape)
+print("y_raw shape:", y_raw.shape)
 
-lookback=60
+# strict time-based split — no randomness, preserves chronological order
+split = int(len(X_raw) * 0.80)
 
-X,y=[],[]
-for i in range(lookback,len(scaled_data)):
-    X.append(scaled_data[i-lookback:i,0])
-    y.append(scaled_data[i,0])
+X_train_raw = X_raw[:split]
+X_test_raw  = X_raw[split:]
+y_train_raw = y_raw[:split]
+y_test_raw  = y_raw[split:]
 
-X, y= np.array(X), np.array(y)
-print("\n X shape:", X.shape)
-print("\n y shape:", y.shape)    
+print("train samples:", len(X_train_raw))
+print("test samples:", len(X_test_raw))
+print("train period: day 0 to day", split)
+print("test period: day", split, "to day", len(X_raw))
 
-#train and test split of data
+# two separate scalers — one for X (60-day windows), one for y (single price)
+scaler_X = MinMaxScaler(feature_range=(0, 1))
+scaler_y = MinMaxScaler(feature_range=(0, 1))
 
-split=int(len(X) * 0.80)
-X_train, X_test=X[:split], X[split:]
-y_train, y_test=y[:split], y[split:]
-print("\n train samples:", len(X_train))
-print("\n test samples:", len(X_test))
+# fit and transform X
+X_train_scaled = scaler_X.fit_transform(X_train_raw)   # fit on train only
+X_test_scaled  = scaler_X.transform(X_test_raw)         # transform only
 
-# reshaping for lstm 2d to 3d
+# fit and transform y
+y_train = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).flatten()
+y_test  = scaler_y.transform(y_test_raw.reshape(-1, 1)).flatten()
 
-X_train=X_train.reshape(X_train.shape[0],X_train.shape[1],1)
-X_test=X_test.reshape(X_test.shape[0],X_test.shape[1],1)
-print("test reshaped:", X_train.shape)
+print("scalers fit on training data only")
+print(f"X train min: {X_train_scaled.min():.3f}, max: {X_train_scaled.max():.3f}")
+print(f"X test min:  {X_test_scaled.min():.3f}, max: {X_test_scaled.max():.3f}")
+print(f"y train min: {y_train.min():.3f}, max: {y_train.max():.3f}")
+print(f"y test min:  {y_test.min():.3f}, max: {y_test.max():.3f}")
 
-# saving files as .npy for model training
+# reshape from 2D (samples, timesteps) to 3D (samples, timesteps, features)
+X_train = X_train_scaled.reshape(X_train_scaled.shape[0], X_train_scaled.shape[1], 1)
+X_test  = X_test_scaled.reshape(X_test_scaled.shape[0], X_test_scaled.shape[1], 1)
+
+print("X_train shape:", X_train.shape)   # (samples, 60, 1)
+print("X_test shape:", X_test.shape)     # (samples, 60, 1)
 
 os.makedirs("data", exist_ok=True)
+
 np.save("data/X_train.npy", X_train)
 np.save("data/X_test.npy", X_test)
 np.save("data/y_train.npy", y_train)
 np.save("data/y_test.npy", y_test)
 np.save("data/close_prices.npy", close_prices)
 
-
-import joblib
-joblib.dump(scaler, "data/scaler.pkl")
-print("\nAll arrays and scaler saved to data")
+joblib.dump(scaler_X, "data/scaler_X.pkl")
+joblib.dump(scaler_y, "data/scaler_y.pkl")
+print("all arrays and scalers saved to data/")

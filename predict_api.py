@@ -14,9 +14,10 @@ tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
 model    = load_model("tata_motors_bilstm.keras")
-scaler   = joblib.load("data/scaler.pkl")
+scaler = joblib.load("data/scaler_y.pkl")
 df_cache = yf.download(TICKER, period="6mo", progress=False)
 
+print(f"Data from: {df_cache.index[0].date()} to {df_cache.index[-1].date()}")
 print(f"Data loaded: {df_cache.shape}")
 
 app = FastAPI()
