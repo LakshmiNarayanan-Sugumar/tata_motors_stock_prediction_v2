@@ -94,8 +94,37 @@ Interactive docs available at `http://127.0.0.1:8000/docs`
 
 ---
 
+## Docker Deployment
+
+The FastAPI serving layer (`predict_api.py`) is containerized for consistent, portable deployment.
+
+**Build:**
+```bash
+docker build -t tata-motors-api .
+```
+
+**Run:**
+```bash
+docker run -p 8000:8000 tata-motors-api
+```
+
+**Test:**
+```bash
+curl http://localhost:8000/
+curl -X POST http://localhost:8000/predict
+```
+
+### A real debugging note
+
+The initial build used a `python:3.10-slim` base image, which failed at model load time with a Keras deserialization error (`Unrecognized keyword arguments passed to Dense: {'quantization_config': None}`). The cause wasn't a package version mismatch — it was that Keras 3.15+ requires Python ≥3.11, so the container's Python 3.10 runtime couldn't satisfy the dependency at all, regardless of how precisely `tensorflow`/`keras` were pinned in `requirements-serving.txt`. Switching the base image to `python:3.12-slim` (matching the local development environment) resolved it.
+
+**Lesson:** pinning application-level package versions doesn't help if the base image's language runtime itself is out of range for what those packages require — check the runtime version first, not just the package versions.
+
+---
+
 ## How to Run
 
+**Locally:**
 ```bash
 pip install -r requirements.txt
 python data_preprocessing.py
@@ -103,6 +132,11 @@ python model.py
 uvicorn predict_api:app --reload
 ```
 
+**Via Docker (serving only):**
+```bash
+docker build -t tata-motors-api .
+docker run -p 8000:8000 tata-motors-api
+```
 ---
 
 ## Stack

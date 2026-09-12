@@ -41,7 +41,6 @@ history = model.fit(
     callbacks=[early_stop],
     verbose=1
 )
-scaler_y = joblib.load("data/scaler_y.pkl")
 
 # inverse transform using scaler_y
 predictions   = scaler_y.inverse_transform(model.predict(X_test))
@@ -68,5 +67,5 @@ plt.show()
 
 # save model
 os.makedirs("model", exist_ok=True)
-model.save("model/tata_motors_bilstm.keras")
+model.save("tata_motors_bilstm.keras")
 print("model saved")
