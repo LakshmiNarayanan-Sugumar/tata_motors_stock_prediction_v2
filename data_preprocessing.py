@@ -18,6 +18,7 @@ print("shape:", df.shape)
 # missing values check
 print("\nmissing values:")
 print(df.isnull().sum())
+assert not df["Close"].isnull().values.any(), "NaNs in Close - clean before windowing"
 
 # plot closing price
 plt.figure(figsize=(14, 5))
@@ -32,6 +33,11 @@ plt.show()
 # extract close prices as numpy array
 close_prices = df[["Close"]].values
 print("close prices shape:", close_prices.shape)
+
+# flag the largest single-day move (demerger, not a market crash)
+daily_change = close_prices[1:, 0] / close_prices[:-1, 0] - 1
+k = int(np.argmin(daily_change)) + 1
+print(f"largest 1-day move: {daily_change[k-1]:.1%} on {df.index[k].date()} (demerger, see README)")
 
 # sliding window — build sequences on RAW unscaled prices
 # scaling happens after split to prevent leakage
@@ -58,8 +64,9 @@ y_test_raw  = y_raw[split:]
 
 print("train samples:", len(X_train_raw))
 print("test samples:", len(X_test_raw))
-print("train period: day 0 to day", split)
-print("test period: day", split, "to day", len(X_raw))
+dates = df.index[lookback:]
+print("train targets:", dates[0].date(), "to", dates[split-1].date())
+print("test targets: ", dates[split].date(), "to", dates[-1].date())
 
 # two separate scalers — one for X (60-day windows), one for y (single price)
 scaler_X = MinMaxScaler(feature_range=(0, 1))

@@ -4,9 +4,11 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Bidirectional, Dropout, Dense
+from tensorflow.keras.layers import Input, LSTM, Bidirectional, Dropout, Dense
 from tensorflow.keras.callbacks import EarlyStopping
-import os
+from tensorflow.keras.utils import set_random_seed
+
+set_random_seed(42)
 
 # loading saved data
 X_train = np.load("data/X_train.npy")
@@ -18,9 +20,10 @@ scaler_y = joblib.load("data/scaler_y.pkl")
 
 # build BiLSTM model
 # FIX: both dimensions of input_shape use X_train, not X_test
+# build BiLSTM model
 model = Sequential([
-    Bidirectional(LSTM(64, return_sequences=True),
-        input_shape=(X_train.shape[1], X_train.shape[2])),  # was X_test.shape[2]
+    Input(shape=(X_train.shape[1], X_train.shape[2])),
+    Bidirectional(LSTM(64, return_sequences=True)),
     Dropout(0.2),
     Bidirectional(LSTM(32, return_sequences=False)),
     Dropout(0.2),
@@ -53,6 +56,13 @@ rmse = math.sqrt(mean_squared_error(y_test_actual, predictions))
 print(f"\nMAE:  ₹{mae:.2f}")
 print(f"RMSE: ₹{rmse:.2f}")
 
+# naive baseline: predict tomorrow = today
+prev_day = np.concatenate([scaler_y.inverse_transform(y_train[-1:].reshape(-1, 1)),
+                           y_test_actual[:-1]])
+naive_mae  = mean_absolute_error(y_test_actual, prev_day)
+naive_rmse = math.sqrt(mean_squared_error(y_test_actual, prev_day))
+print(f"Naive baseline (tomorrow = today) -> MAE: ₹{naive_mae:.2f}  RMSE: ₹{naive_rmse:.2f}")
+
 # plot predicted vs actual
 plt.figure(figsize=(14, 5))
 plt.plot(y_test_actual, color="steelblue", label="Actual Price")
@@ -66,6 +76,6 @@ plt.savefig("predicted_vs_actual.png")
 plt.show()
 
 # save model
-os.makedirs("model", exist_ok=True)
+# save model
 model.save("tata_motors_bilstm.keras")
 print("model saved")

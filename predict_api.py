@@ -13,17 +13,20 @@ TICKER   = "TMPV.NS"
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
-model    = load_model("tata_motors_bilstm.keras")
-scaler = joblib.load("data/scaler_y.pkl")
-df_cache = yf.download(TICKER, period="6mo", progress=False)
+model     = load_model("tata_motors_bilstm.keras")
+scaler_y  = joblib.load("data/scaler_y.pkl")
+df_cache  = yf.download(TICKER, period="6mo", progress=False)
+
+if len(df_cache) < LOOKBACK:
+    raise RuntimeError(f"Need {LOOKBACK} trading days, got {len(df_cache)} - Yahoo download failed?")
 
 print(f"Data from: {df_cache.index[0].date()} to {df_cache.index[-1].date()}")
 print(f"Data loaded: {df_cache.shape}")
-
 app = FastAPI()
 
 class PredictResponse(BaseModel):
     ticker: str
+    as_of: str
     current_price: float
     predicted_price: float
     currency: str
@@ -40,14 +43,15 @@ def predict():
     close_prices  = df_cache["Close"].values.flatten()[-LOOKBACK:]
     current_price = float(df_cache["Close"].values.flatten()[-1])
 
-    scaled  = scaler.transform(close_prices.reshape(-1, 1))
+    scaled  = scaler_y.transform(close_prices.reshape(-1, 1))
     X_input = scaled.reshape(1, LOOKBACK, 1)
 
     prediction_scaled = model(X_input, training=False).numpy()
-    predicted_price   = float(scaler.inverse_transform(prediction_scaled)[0][0])
+    predicted_price   = float(scaler_y.inverse_transform(prediction_scaled)[0][0])
 
     return PredictResponse(
         ticker=TICKER,
+        as_of=str(df_cache.index[-1].date()),
         current_price=round(current_price, 2),
         predicted_price=round(predicted_price, 2),
         currency="INR"
