@@ -11,7 +11,7 @@ Predicting the next-day closing price of Tata Motors Passenger Vehicles (TMPV.NS
 | MAE | ₹18.27 | ₹8.28 |
 | RMSE | ₹29.68 | ₹17.57 |
 
-**The naive baseline outperforms the model by roughly 2.2x.** For a single-feature, next-day price forecast, this is a well-known and expected result: daily stock price changes are close to unpredictable, so "tomorrow's price ≈ today's price" is a genuinely hard baseline to beat, and the model's own error compounds on top of that starting point rather than improving on it.
+**The naive baseline has roughly 2.2x lower MAE and 1.7x lower RMSE than the model.** For a single-feature, next-day price forecast, this is a well-known and expected result: daily stock price changes are close to unpredictable, so "tomorrow's price ≈ today's price" is a genuinely hard baseline to beat, and the model's own error compounds on top of that starting point rather than improving on it.
 
 I'm reporting this because I'd rather show an honestly benchmarked project than an inflated one. See [Known Limitations & Future Work](#known-limitations--future-work) for what would need to change to close this gap.
 
@@ -142,6 +142,10 @@ The initial build used a `python:3.10-slim` base image, which failed at model lo
 
 **Lesson:** pinning application-level package versions doesn't help if the base image's language runtime itself is out of range for what those packages require — check the runtime version first, not just the package versions.
 
+### Another debugging note: the `/predict` endpoint hang
+
+The first version of the endpoint hung on every request: no crash, no error, it just timed out. Three changes resolved it: price data is now fetched once at server startup instead of inside the request handler, TensorFlow is limited to a single thread (`tf.config.threading.set_inter_op_parallelism_threads(1)` and `set_intra_op_parallelism_threads(1)`), and the model is called directly with `model(X, training=False).numpy()` instead of `model.predict`.
+
 ---
 
 ## How to Run
@@ -164,12 +168,12 @@ docker run -p 8000:8000 tata-motors-api
 
 ## Known Limitations & Future Work
 
-- **Doesn't beat the naive baseline.** The model trails "tomorrow = today" by roughly 2.2x on both MAE and RMSE, including on the clean, post-demerger test segment. The most direct fix would be reformulating the model to predict the next-day *return* (percent change) rather than the price level directly — this reframes the naive baseline as "predict 0% change," which the model only has to improve on incrementally, rather than reconstructing a full price level from scratch.
+- **Doesn't beat the naive baseline.** The model trails "tomorrow = today" by roughly 2.2x on MAE and 1.7x on RMSE, and still trails it on MAE in the clean, post-demerger test segment. The most direct fix would be reformulating the model to predict the next-day *return* (percent change) rather than the price level directly — this reframes the naive baseline as "predict 0% change," which the model only has to improve on incrementally, rather than reconstructing a full price level from scratch.
 - **Corporate action handling.** The 14 October 2025 demerger is a structural break the pipeline doesn't currently adjust for. Back-adjusting pre-demerger prices, or excluding/flagging the affected window, would give a cleaner evaluation.
 - **Single-feature input.** Only closing price is used; no volume, no other tickers, no macro features.
 - **API data freshness.** `predict_api.py` fetches price history once at server startup and reuses it for the container's lifetime — a long-running deployment would serve stale `current_price`/`as_of` values without a restart. A time-based cache refresh would fix this.
 - **No fixed evaluation seed until this pass.** Earlier runs weren't seeded, so reported metrics varied between runs; `set_random_seed(42)` is now used for reproducibility on CPU (GPU runs may still vary slightly).
-- **Environment note:** training this model hit a reproducible TensorFlow/Keras thread-pool deadlock on Apple Silicon (M1) CPU-only local execution — the process would hang indefinitely at 0% CPU, unresponsive even to `Ctrl+C` (consistent with a native-level lock, not a Python-level issue). Root cause wasn't fully isolated; training was moved to Google Colab as a reliable workaround. Local M1 execution remains fine for running the FastAPI serving layer.
+- **Environment note:** training this model hit a reproducible TensorFlow/Keras thread-pool deadlock on Apple Silicon (M1) CPU-only local execution — the process would hang indefinitely at 0% CPU, unresponsive even to `Ctrl+C` (consistent with a native-level lock, not a Python-level issue). Root cause wasn't fully isolated; training was moved to Google Colab as a reliable workaround. Running the FastAPI serving layer locally works with the single-thread and direct-call settings described above.
 
 ---
 
